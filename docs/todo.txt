@@ -1,0 +1,4 @@
+- Tone consolidation between quickstart and docs
+- More thorough paradigm signalling explicitly saying what paradigm we are in and the consequences
+- Rebuild third preamble around "root cause analysis" and possibly broader document.
+-
