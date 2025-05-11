@@ -11,6 +11,7 @@ from torch import nn
 from typing import Union, Any, Tuple, List
 from abc import ABC, abstractmethod
 from ...utilities import ReLUPlus
+from .private_types import Kernels
 
 class AbstractShardEnsemble(nn.Module, ABC):
     """
@@ -21,7 +22,7 @@ class AbstractShardEnsemble(nn.Module, ABC):
     @abstractmethod
     def prefetch(self,
                  ensembles: torch.Tensor
-                 )->Tuple[List[torch.Tensor], torch.Tensor]:
+                 )->Tuple[Kernels, torch.Tensor]:
             """
             Prefetches the relevant kernels and keys for the given ensembles.
             This must be compatible with the later forward logic.
@@ -31,7 +32,7 @@ class AbstractShardEnsemble(nn.Module, ABC):
                 x: torch.Tensor,
                 weights: torch.Tensor,
                 ensembles: torch.Tensor,
-                kernels: List[torch.Tensor],
+                kernels: Kernels,
                 )->torch.Tensor:
             """
             The resolution process, to actually run the selected
@@ -72,7 +73,7 @@ class FeedforwardEnsemble(AbstractShardEnsemble):
 
     def prefetch(self,
                  ensembles: torch.Tensor
-                 )->Tuple[List[torch.Tensor], torch.Tensor]:
+                 )->Tuple[Kernels, torch.Tensor]:
             """
             Prefetches the relevant kernels and keys for the given ensembles.
             This must be compatible with the later forward logic.
@@ -90,7 +91,7 @@ class FeedforwardEnsemble(AbstractShardEnsemble):
                 x: torch.Tensor,
                 weights: torch.Tensor,
                 ensembles: torch.Tensor,
-                kernels: List[torch.Tensor],
+                kernels: Kernels,
                 )->torch.Tensor:
             """
             The resolution process, to actually run the selected
