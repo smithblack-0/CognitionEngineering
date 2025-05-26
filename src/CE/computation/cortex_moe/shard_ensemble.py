@@ -19,6 +19,13 @@ class AbstractShardEnsemble(nn.Module, ABC):
     interface and the fact that you will need to
     pass in functional kernels
     """
+    subclasses = {}
+    type: str
+    def __init_subclass__(cls, **kwargs):
+        if not hasattr(cls, "type"):
+            raise AttributeError("class field 'type' must be overridden in subclasses")
+        cls.subclasses[cls.type] = cls
+
     @abstractmethod
     def prefetch(self,
                  ensembles: torch.Tensor
@@ -45,15 +52,16 @@ class AbstractShardEnsemble(nn.Module, ABC):
             kernels: List of tensors of the correct shape
             """
 
+
 class FeedforwardEnsemble(AbstractShardEnsemble):
     """
     A functional feedforward layer designed to separate
-    a prefetch invokation followed by a later feedforward
+    a prefetch invocation followed by a later feedforward
     execution in terms of the relevant experts. Note that
-    we use two-layer perceptrons without projections for
+    we use two-layer perceptron without projections for
     simplicity.
     """
-
+    type = "feedforward"
     def __init__(self,
                  ensemble_size: int,
                  input_dim: int,
@@ -129,4 +137,6 @@ class FeedforwardEnsemble(AbstractShardEnsemble):
             x = (x * weights).sum(dim=1)
 
             return x
+
+
 

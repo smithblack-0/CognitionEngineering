@@ -48,3 +48,32 @@ class ReLUPlus(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return ReLUPlusFunc.apply(x, self.leak_slope)
 
+class LogitDropout(nn.Module):
+    """
+    Dropout for logits. Sets dropped elements to -inf so they are ignored by softmax
+    or similar activation functions. Guarantees at least one valid logit along a
+    specified dimension.
+    """
+    def __init__(self, p: float = 0.5, comparison_dim: int = -1):
+        """
+        :param p: Dropout probability.
+        :param comparison_dim: Dimension along which to ensure at least one element is kept.
+        """
+        super().__init__()
+        if not (0.0 <= p <= 1.0):
+            raise ValueError("Dropout probability must be in [0, 1]")
+        self.p = p
+        self.comparison_dim = comparison_dim
+
+    def forward(self, logits: torch.Tensor) -> torch.Tensor:
+        if not self.training or self.p == 0.0:
+            return logits
+
+        while True:
+            keep_mask = torch.rand_like(logits) > self.p
+            # Ensure at least one True per slice along comparison_dim
+            if keep_mask.any(dim=self.comparison_dim).all():
+                break
+
+        return logits.masked_fill(~keep_mask, float('-inf'))
+

@@ -26,6 +26,10 @@ class ShardPrefetcher(nn.Module):
     Note that registering a sequence of layers will perform
     prefetching in that same sequence.
     """
+    @property
+    def num_layers(self)->int:
+        return len(self.cortex_layers)
+
     def __init__(self):
         self.cortex_layers: List[CortexMoE] = []
 
@@ -47,4 +51,50 @@ class ShardPrefetcher(nn.Module):
         for layer in self.cortex_layers:
             prefetches.append(layer.prefetch())
         return prefetches
+
+class LocalizedPrefetcher(nn.Module):
+    """
+    Prefetching involves using parameters
+    to select a subset of global shards to
+    use for each layers. However, when training
+    is not occuring, this subset never changes.
+
+    Built on this principle, the localized
+    prefetcher can be fed a prefetch instance
+    and will then store it as new parameters.
+    It will then just return the stored parameters
+    upon being invoked.
+    """
+
+    @property
+    def num_layers(self)->int:
+        return len(self.c_layers)
+
+    def __init__(self, prefetches: List[Prefetch]):
+        super().__init__()
+
+        self.c_list = nn.ParameterList()
+        self.I_list = nn.ParameterList()
+        self.K_list = nn.ParameterList()
+        self.L_lists = nn.ModuleList()  # each L is a ParameterList
+
+        for c, I, K, L in prefetches:
+            self.c_list.append(nn.Parameter(c, requires_grad=False))
+            self.I_list.append(nn.Parameter(I, requires_grad=False))
+            self.K_list.append(nn.Parameter(K, requires_grad=False))
+            L_param_list = nn.ParameterList([nn.Parameter(t, requires_grad=False) for t in L])
+            self.L_lists.append(L_param_list)
+
+    def forward(self) -> List[Prefetch]:
+        """
+        Builds the prefetch and returns
+        :return: Returns the same prefetch we were originally
+        provided with.
+        """
+        return [
+            (self.c_list[i], self.I_list[i], self.K_list[i], list(self.L_lists[i]))
+            for i in range(len(self.c_list))
+        ]
+
+
 

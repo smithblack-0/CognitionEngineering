@@ -10,10 +10,6 @@ from .shard_ensemble import AbstractShardEnsemble
 from typing import Protocol, Tuple, List
 from .private_types import Kernels, Prefetch
 
-class RegistryProtocol(Protocol):
-    def register(self, layer: "CortexMoE"):
-        pass
-
 class CortexMoE(nn.Module):
     """
      The ‘CortexMoE‘ is the drop-in replacement for a standard feedforward layer. It
@@ -22,15 +18,9 @@ class CortexMoE(nn.Module):
      using its internal Selector and a shared ShardEnsemble reference. It exposes two
      methods: ‘.prefetch‘ and ‘.forward‘, and should be thought of as an interface
      between an enormous computational framework and the immediate issue.
-
-
-     Initialization is performed in a manner that is familiar to most MoE
-     experts, in terms of the number of experts in the layer, the number chosen,
-
     """
     def __init__(self,
                  shard_ensemble: AbstractShardEnsemble,
-                 registry: RegistryProtocol,
                  num_total_shards: int,
                  num_shards_prefetched: int,
                  num_shards_selected: int,
@@ -50,7 +40,6 @@ class CortexMoE(nn.Module):
         :param nudging_penalty: The nudge strength.
         """
         super().__init__()
-        registry.register(self)
 
         # Setup main layers
         self.shard_ensemble = shard_ensemble
