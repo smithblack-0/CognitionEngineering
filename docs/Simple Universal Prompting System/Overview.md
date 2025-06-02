@@ -1,6 +1,6 @@
 # Overview
 
-The Simple Universal Prompting System (SUPS) is a system consisting 
+The Simple Universal Prompting System (SUPS) is a proposed system consisting 
 of a prompting frontend and configuration language, a flow
 control language, an IR compiler, and a final backend consisting
 of a FSM designed to operate without python flow control on the GPU,
@@ -14,134 +14,245 @@ programmer to use which simply intercepts flowing tokens and
 either replaces them with a teacher-forced form, or lets the model
 continue to generate freely.
 
+It is being developed for research purposes, but may be useful
+to the broader open source community as well. This release is 
+to judge interest. It is just passing the prototype phase where
+full viability was proven.
+
+# Project introduction
+
 ## Why does SUPS exist?
 
-SUPS is designed to fix three issues:
+The SUPS system is designed to greatly lower the 
+workload required to get complex prompting jobs 
+done and be adaptable enough to form a core for future 
+extension. It has, overall, three different conceptual
+levels of components.
 
-1) Defining a conditional flow control with a sequence of prompts
-   is extremely painful using current technology, particularly if
-   you want to generate in parallel using batches. The right
-   language has not been invented yet.
-2) It is not easily possible to switch between prompting and generation
-   during evaluation when generating batches of data.
-3) Any solutions to 1 and 2 always involve moving the process
-   off the GPU.
+1) Universal Declarative Prompting Language (UDPL) and 
+   Straightforward Agentic Control System (SACS) make up
+   a set of modern specification languages that amplify
+   developer effort, much like C was when all your previous
+   options were BASIC or Assembly. An explicit goal is that
+   a one-year ML intern could follow what is going on with
+   no language training at all.
+2) Zone Control Protocol (ZCP), and the associated parsing
+   backend systems, are a specialized IR designed to expose 
+   individual Prompt/Generate blocks and token-driven flow
+   control declaration. It is in essence a prompting bytecode
+   specification consisting of a graph of instructions. The 
+   combination of UDPL parsing and then SACS programming should
+   compile to this language. 
+3) The Prompt Feeding Automata is a backend that
+   ZCP bytecode can then be parsed into. It is, in effect, a
+   very primitive computer with a program counter implemented
+   entirely using tensors on the GPU itself. As such, it can
+   support batched flow control involving only self-play tasks
+   on the GPU. Before you scoff, yes, it is prototyped; it does
+   work. Everything is generated in one smooth run.
 
-It was originally developed with the intention to allow the automatic creation of training
-data, but can go beyond it. If community interest is 
-sufficient, it may be possible to eventually provide 
-resources that support agentic self play, though
-this would be limited to state models like RWKV and Mamba.
+Learning from previous generations of mistakes, these are deliberately
+interchangable; you can write your own prompting parser if it 
+compiles down to ZCP, or your own TTFA if you need more capabilities.
+Additionally, while support is only planned for Torch at first,
+you may easily write your own backend systems in other frameworks;
+any framework with numpy indexing behavior should be compatible.
 
-## When do I need SUPS?
+Extraction technology is also included with the package, with
+the ability to tag zones then extract a sequence of all tags
+in order planned. Note that tool usage is NOT explicitly
+supported at the moment, as the backend is designed for rapid
+bulk generation of samples and waiting in python for tool
+responses would stall this process. Extensions which have been mapped out as
+feasable by additional modules, without modification to the 
+above, include
 
-If you are doing
+* Multiagentic support, though this only works in stateful models
+  like Mambda and RWKV; no transformers. That restriction does not 
+  apply to everything else, however. Extensions are required in
+  UDPL, which is minor, and an additional independent TTFA is needed
+  which stores and returns the active agent state for each step
+* Tool usage training. Once we have multiagent support, it is easy
+  to simulate tool results by having another agent be prompted to 
+  simulate a response.
+* Eval time tool usage. At the moment, I do not need it, but
+  it would be perfectly feasable to include a flag in the language
+  that set tool usage as allowed. However, this will likely require
+  a separate backend, as though UDPL, SACS, and ZCP are perfectly
+  capable of expressing these requests, deployment-state tool usage
+  does not 
 
-- Large generation of massive quantity of synthetic training data on similar
-  templates
-- Agentic activities with self-reflection and complex workflows WITHOUT
-  external tools.
-- Control logic depending on cases and decisions made
-  during execution of the task by the model involving
-  alternative prompting strategies
-- Extremely complex prompting chains with lots of
-  dependencies which are filled in before feeding
-  this into the model in a single batch or linear
-  run.
+Implemenetation of these will depend on community interest, as
+they are not immediately needed to complete my research.
 
-You do NOT need it if
+### Why does UDPL and SACS exist
 
-- You are a causal user trying to set your model up for
-  inference
-- You can accept the speed loss from doing flow control and
-  prompting in python
+UDPL and SACS are together two domain specific languages 
+intended to make the process of defining prompt workflows 
+much more straightforward. It is a set of innovations that,
+together, make up a compiler for prompting that is far more
+capable than anything openly available at the moment.
 
-Note, however, that the UDPL prompting language may
-be useful for other prompting systems regardless; it appears
-to be significantly more expressive than any existing solution.
+Prompt engineering with most current prompt libraries is 
+somewhat like being forced to choose between BASIC or 
+assembly: You can choose to do simple tasks easily,
+or more complex tasks with a lot of work, but you cannot
+do both.Simple single purpose libraries can get common jobs done
+quite easily, but are not very powerful on variations. Meanwhile,
+the lower level libraries such as Microsoft's 'Guidance' are 
+powerful but require excessive manual and often brittle
+loading of code resources and segments, making pivots during
+research or tuning unnecessarily difficult. 
 
-## How is that not going to be impossibly complex?
+This is unnecessary. C++ is a very powerful language that nonetheless
+can be compiled down to something small and very fast; this is the 
+approach taken here. UDPL allows you to specify chains of prompts
+to feed with 'tagging' for automatic extraction of texts later, and
+SACS is a simple flow control system that captures the flow control 
+graphs and their requirements in a manner that can then be lowered into
+ZCP. Every effort has been taken to ensure all portions of the pipeline
+are human readable and easy to grok at a glance - for instance, activating
+flow control means making an indented flow region in python like normal 
+if you are following standard SUPS linting protocols.
 
-SUPS is a compiling system. It produces a class that can
-be invoked on your token stream to transparently listen to
-and inject prompts into your token stream. The lowering
-workflow is, roughly:
+The **Universal Prompting Declarative Language** is a human-readable 
+TOML file that defines sequences of prompts to feed and then generate
+in response to, and also defines tagging information that lets you 
+assign tags to text regions; these tags can then be declared as 
+required for extraction later on in SACS. The 
+**Straightforward Agentic Control System** is intended to allow
+display of python-like flow control, and configuration that develops
+a static flow control graph and invokes UPDL sequences in each flow
+block. Tag extraction is also specified as part of the process. 
+Maximal effort is placed on easy of reading, writing, and reasoning
+through these languages.
 
-- Starts at a very human-readable high level declarative 
-  parsing and prompting language (SACS and UDPL)
-- Compiles this down to an IR based zone-based graph with flow control
-  branching, prompting payload, tagging instructions, and 
-  other important structures called ZCP. It declares what will
-  be generated in the zone, what mechanism can exit it, and what
-  tokens to listen for to make those exits
-- The ZCP IR is compiled down to vectorized bytecode for 
-  a barebone primitive VM running on the GPU 
-  using tensorized instructions and python tensors, which
+These two frontend languages together are intended to provide a new
+foundation for defining flow control and prompts. They are, I 
+hope, useful to others as well.
 
-This VM is deliberately turning-incomplete, being
-unable to generally convert data to instructions
-besides statically treating tokens as a register
-and triggering when certain conditions are seen. 
-All the advanced logic lives in the compiling. 
-Zone Control Protocol instructions are at the heart 
-of the system, allowing specification of 
-a prompting flow control that makes decisions based 
-on tokens the model produces in its stream while
-remaining entirely on the GPU.
+### What is ZCP?
 
-Because adding, vector indexing, and token value
-comparison are all executable using vectorized logic,
-we can then perform flow control without ever leaving
-the GPU so long as only the model is ever generating
-or responding to answers. We can also do this in
-batches, and this is explicitly designed in.
+The Zone Control Protocol is an intermediate stage that is
+at the core of the SACS system. The smallest unit of 
+instruction is the Zone. A Zone has an optional sequence
+of tokens to feed while teacher forcing, a token to listen
+for to move onto the next zone, and sometimes a token to listen
+for to engage 'jump' flow control logic, along with some
+other details. 
 
-Supporting different backends is possible, as like
-Java it compiles to an intermediate language known
-as ZCP. 
+The Zone Control Protocol is a graph of these zones that 
+walks us through the flow control, as originally defined
+in the SACS system. If anyone wants to worry about visualizing
+this, it is the best low-level place to look when debugging.
 
-## What is it, really?
+### What is the Prompt Feeding Automata
 
-It is a **Data-Triggered Prompt Router** designed to process batches
-in parallel, with fully independent flow control per instance.
-Prompt tokens are injected until exhausted, after which the model is 
-allowed to generate freely.
+The Prompt Feeding Automata (PFA) is a simple, turning-incomplete
+computer operating entirely on the GPU using vector indexing logic.
+It is the first of what I am calling a Token Triggered Finite Automata (TTFA).
 
-A minimal vectorized computer, implemented entirely on the GPU using tensors 
-that advance through a program using a parallized program counter,
-monitors the model's output for special flow control tokens.
-When such tokens are detected, it advances the program counter,
-loads new prompt zones, or performs jumps—thereby implementing
-real conditional flow control entirely in-token-stream.
+The basic strategy is exactly what Torchscript did; decide on a restricted subset of flow control supported, in fact consisting of only advance The program counter or jump to a location determinedly statically by something associated with the current counter. Despite this simplicity, this is turning-complete in the same way an arduino is; if you accept you cannot change your instructions after encoding, but can watch the data stream, you can write
+a compiler to handle arbitrary flow control. Indeed, this is actually what happens in some C or C++ backends. The Harvard architecture is used for simplicity.
 
-This architecture allows prompt/generate cycles to alternate rapidly
-and efficiently, enabling massively parallel self-play, automated
-reasoning loops, and high-throughput synthetic data generation.
+It is worth briefly discussing the insight that makes this possible
+in a batch-parallelized format.
 
-Future extensions, given sufficient community interest, have been
-identified that would allow automatic agentic self play with
-stateful models like SSMs and Mamba.
+1) It is the case that vector indexing,
+   known as advanced indexing, can be performed in Numpy-derivative
+   languages quite efficiently using tensors of indexes.
+2) Grabbing data using indexes is exactly the same thing as dereferencing
+   a pointer. But these tensors can dereference multiple pointers across all
+   batches.
+3) Throw in a Program Counter and you can implement a computer that runs entirely on the GPU, never leaving it, and even supports flow control logic all while being batched.
 
-## 📌 Clarifying Key Concepts
+The computer is a very simple Harvard architecture
+which behaves as a finite state machine that can move between 
+instruction 'Zones', and transitions are triggered by listening
+to instructions. Sequence has a program counter which is advanced one zone at a time under normal conditions, and can also trigger jumps to addresses; these jumps are statically defined at compile time, making two options - jump to the static destination or continue to the next zone. The intention is to have an automata
+so simple it is possible to formally verify. 
 
-Before diving into SUPS, UDPL, and SACS, here are some essential clarifications that may not be obvious from reading their individual sections:
+The overall idea is as follows:
 
-### Sequences, Blocks, and Zones
+- **Zones as Instructions**  
+  Each zone contains prompt tokens, tags,
+  and optional jump info. The ZCP compiler
+  assigns control tokens and jump targets.
+- **Program Counter (PC)**  
+  A per-batch counter tracks the current
+  zone. It normally moves forward one zone
+  at a time unless a jump is triggered.
+- **Zone Execution**  
+  1. Prompt tokens override model input.
+  2. After prompts, tokens flow freely
+     until:
+     - **Advance token** → next zone  
+     - **Jump token** → jump target  
+     - **Timeout** → inject advance token
+- **Tag painting**: The tags that are active for this zone
+    are painted onto the generated tokens. This manifests as
+    a separate tags output from the autonoma.
+- **Vectorized GPU Execution**  
+  All operations—token matching, PC updates,
+  prompt injection—are parallel and GPU-local.
+  No Python or CPU sync is needed.
 
-These terms frequently appear and may cause confusion if not clearly distinguished:
+This simple, efficient structure allows
+massively batched flow control and prompting
+with minimal overhead and full GPU locality.
+We should also discuss how to store token sequences,
+which may be of varying length and which, in a list, would 
+require going back to python. We can flatten
+the prompt tokens to all zones, concatenate those 
+together, then store the offset to start and end
+feeding from with the Instruction. This completes
+the picture.
+
+# Technical Status
+
+Basically, already in progress or ready to get quite serious.
+
+* UDPL parser - V0.1 done, but needs to be reconfigured after 
+  adding flow control.
+* SACS - Outlined, graph theory corrolation between inline flow
+  and flow control mapped
+* ZCP - V0.1 done, but again needs to be reconfigured after
+  adding flow control.
+* PFA - Proof-of-concept on the computation mechanism completed,
+  showing we can feed a sequence of prompts across different
+  batches advancing to the next prompt at different times.
+
+
+# Clarifying Key Concepts
+
+Here are some essential clarifications that may not be obvious from
+reading their individual sections:
+
+## Sequences, Blocks, and Zones
+
+These terms frequently appear and may cause confusion if not clearly
+distinguished:
 
 - **Sequence**: A named stage or phase within your program logic (e.g., `setup`, `loop`, `solving`).
 - **Block**: A single prompt-response entry within a sequence, defined in the TOML configuration.
 - **Zone**: A clearly delimited portion of text within a block, marked by special tokens like `[Prompt]` and `[Answer]`. Zones are the units tagged for selective extraction later.
 
-### **Tags and Their Purpose**
+## Error Handling
+
+The UDPL and SACS language come with a formal specification of what 
+they can and cannot do, and under what conditions.
+This makes it straightforward to write parsing logic that
+does rigorous error checking; writing a config that has the
+wrong configuration will tell you what is wrong, and where.
+
+## **Tags and Their Purpose**
 
 Tags like `Training`, `Correct`, or `Feedback` do 
 **not directly control runtime behavior**. Instead,
 they’re metadata for selectively extracting parts 
 of the generated text afterward.
 
-### Flow Control via Prompts and Tokens
+## Flow Control via Prompts and Tokens
 
 SUPS supports genuine flow control—though 
 differently than traditional programming languages.
@@ -166,7 +277,7 @@ Finally, the escape token defined in config
 can skip the next flow control instruction, such
 as advancing zones or not jumping.
 
-### The Model as Commander
+## The Model as Commander
 
 At runtime, the language model acts 
 as the "commander," prompted to control 
@@ -178,29 +289,13 @@ This enables efficient flow control
 entirely on the GPU, without Python-level
 branching during generation.
 
-## How do I use SUPS?
+# Quick Examples
 
-There are four primary user servicable parts to SUPS which the user needs to
-worry about. We go over a simple example here, to show
-off key ideas. Each of these sections also has more
-detailed documentation in other files.
+## Universal Declarative Prompting Language (UDPL)
 
-### Universal Declarative Prompting Language (UDPL)
-
-The Universal Declarative Prompting language (UDPL)
-is a  specially designed highly human readable prompting
-format in toml optimized to produce 'sequences' of prompts
-that can automatically handle the fact that, much of the 
-time, an agentic system is automatically 
-dynamic dependencies to be resolved later, which are
-designed to be fed in a particular sequence. Special
-hooks exist for flow control. This is discussed in much 
-more resource over in the UDPL documentation. A specialized way
-of tagging 'Zones' allows easy slicing and extraction of 
-text regions later. A zone is defined as a region between
-zone tokens, such as [Prompt]..[Answer], and tags are associated.
-
-A simple minimal UDPL declaration might be the following, which is a valid file.
+A simple minimal UDPL declaration might be the
+following, which is a valid file. This is being
+configured to perform philosophical self-play.
 
 ```toml
 # All UDPL instances have to have a config
@@ -301,6 +396,7 @@ State the scenario and a subtly incorrect way to resolve the scenario;
 [Answer]
 """
 tags =[[],["Incorrect"]]
+
 [[concluding]]
 text="""
 [Prompt]
@@ -336,7 +432,7 @@ might have performed
 
 ```python
 from CE import sups
-from subs import StringResource
+from sups import StringResource
 
 constitution = """
 ... whatever
@@ -363,8 +459,8 @@ the main object captures a graph of the actions. It
 is, in essence, a way of making a program that can be compiled
 down to the Zone Control Protocol intermediate byte language.
 
-An example program that might have been created using the 
-previous file would be.
+Notice in the example program below the core power of SUPS;
+this feels like python flow control, not another language.
 
 ```python
 
@@ -378,11 +474,16 @@ resources = {}
 resources["constitution"] = sups.StringResource(constitution)
 resources["feedback"] = sups.FeedbackSamplerResource(buffer_size=300)
 
-sequences = sups.parse_udpl_file("prompts.toml")
+sequences, config = sups.parse_udpl_file("prompts.toml")
+
+# Tokenizer setup
+
+tokenizer = make_tokenizer()
+tokenizer = add_special_tokens(tokenizer, config.special_tokens)
 
 # Programming the actual control 
 
-program = sups.new_program(sequences)
+program = sups.new_program(sequences, resources, config, tokenizer)
 program.run(sequence="setup") # This runs the sequence called setup
 with program.while(sequence="loop", min=2, max=6) as loop:
    # Loop, recall, can sometimes emit a 
@@ -405,7 +506,7 @@ program.extract(name="feedback",
                 tags = ["Feedback"])
 
 # Compile the program. 
-factory = program.compile(backend="default")
+controller_factory = program.compile(backend="PFA")
 ```
 
 ### Deployment by Backend
@@ -424,7 +525,7 @@ separate batches.
 ```python
 training_data = []
 for batch in range(1000):
-    sups_manager = factory()
+    sups_manager = controller_factory()
     tokens = ... #default
     sequence = []
     tags = []
@@ -433,7 +534,7 @@ for batch in range(1000):
         tokens, tag = sups_manager.inject(tokens)
         sequence.append(tokens)
         tags.append(tag)
-    output = subs_manager.extract(sequence, tags)
+    output = sups_manager.extract(sequence, tags)
     for batch in output:
       case = {"correct" : batch["good_synthetic_training_data"],
               "incorrect" : batch["bad_synthetic_training_data"]}
@@ -442,43 +543,3 @@ for batch in range(1000):
 
 save_to_disk(training_data)
 ```
-
-# Backend: Minimal GPU Automaton
-
-The SUPS backend is a minimal automaton
-running entirely on the GPU using vector
-ops. It acts like a simple instruction
-runner with token-based control flow.
-
-- **Zones as Instructions**  
-  Each zone contains prompt tokens, tags,
-  and optional jump info. The ZCP compiler
-  assigns control tokens and jump targets.
-
-- **Program Counter (PC)**  
-  A per-batch counter tracks the current
-  zone. It normally moves forward one zone
-  at a time unless a jump is triggered.
-
-- **Zone Execution**  
-  1. Prompt tokens override model input.
-  2. After prompts, tokens flow freely
-     until:
-     - **Advance token** → next zone  
-     - **Jump token** → jump target  
-     - **Timeout** → inject advance token
-  Notably, the advance, jump, and timeout
-  mechanism are sensitive during overriding
-  of token sequences, which allows teacher
-  forcing by never handing control back to
-  the model, but also necessitates escape
-  tokens.
-
-- **Vectorized GPU Execution**  
-  All operations—token matching, PC updates,
-  prompt injection—are parallel and GPU-local.
-  No Python or CPU sync is needed.
-
-This simple, efficient structure allows
-massively batched flow control and prompting
-with minimal overhead and full GPU locality.

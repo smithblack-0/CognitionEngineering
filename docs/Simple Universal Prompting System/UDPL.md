@@ -1,5 +1,11 @@
 # Universal Declarative Prompting Language
 
+## What is this?
+
+This is the official specification for v1 of the 
+UDPL prompting language. Linters and the ZCP compilers
+should conform to this spec.
+
 ## Overview 
 
 The Universal Declarative Prompting Language (UDPL)
@@ -50,10 +56,7 @@ an industry standard for better prompting configuration.
 
 
 
-
-
-
-UDPL itself does not define execution order or control flow — it is consumed by downstream systems that run prompts linearly or with flow control. Its design supports both use cases equally, and serves as a flexible frontend for declaratively configuring prompt-based generation.
+UDPL itself does not define control flow — it is consumed by downstream systems that run prompts linearly or with flow control. Its design supports both use cases equally, and serves as a flexible frontend for declaratively configuring prompt-based generation.
 
 
 The Universal Declarative Preprocessing Language is a domain-specific language
@@ -254,6 +257,10 @@ blocks are repeated, tagged, or filled dynamically.
   `name` of a resource to call, and may include
   `arguments` if needed. These interact with the 
   optional but recommended resource system.
+
+### Text Rules
+
+the `text` required field has certain flow control responsibilities that also need to be formally checked. In particular, it does not make sense to include a flow control token --- in our examples "[Jump]" but exact details depend on configuration --- in the text stream without escaping the jump first; otherwise, the TTFA will happily follow flow control due to teacher-forced prompts. This is checked for.
 
 ### Placeholders & Resource Bindings
 
@@ -594,6 +601,8 @@ This runs a simple philosophical reflection exercises that has the model produce
 answer at the end; a union between the training and correct tags can refine this for synthetic training data
 purposes. The reflection step runs three times.
 
+
+
 ### Code 
 
 In python, we will manually define a few principles we wish to follow using the backend resources.
@@ -636,123 +645,240 @@ manager = sups.load_backend(zcp)
 
 
 
+## Straightforward example.
+
+### UDPL file.
+
+Suppose we have a straightforward UDPL file. This is 
+a simple straightthrough self-play example.
+
 ```toml
+[config]
+zone_tokens = ["[Prompt]", "[Answer]", "[EOS]"]
+required_tokens = ["[Prompt]", "[Answer]"]
+valid_tags = ["Training", "Final"]
+default_max_token_length = 20000
+sequences = ["blocks"]
+control_token = "[Jump]"
+escape_token = "[Escape]"
+
+[[blocks]]
+text="""[Prompt]Consider and resolve a philosophical dilemma
+according to the following principles: {placeholder} 
+[Answer]
+Okay, I should think this through. 
+"""
+tags=[["Training"], []]
+[blocks.placeholder]
+name = "constitution_overview"
+
+[[blocks]]
+text="""[Prompt]Revise your previous answer after
+considering the following additional details.
+Make sure to also pretend you are directly answering
+the prior response: {details}
+[Answer]
+Okay, I should begin by thinking through the new point, then
+consider if I should revise my answer. Then I give my final 
+answer.
+"""
+tags= [[], []]
+[blocks.details]
+name = "constitution_details"
+arguments = {"num_samples" : 3}
+repeats = 3
+
+[[blocks]]
+text = """[Prompt]
+Consider your reflections so far. State a perfect answer
+as though you jumped straight to the right answer.
+[Answer]"""
+tags = [[], ["Final"]]
+```
+
+This runs a simple philosophical reflection exercises that has the model produce a more refined
+answer at the end; a union between the training and correct tags can refine this for synthetic training data
+purposes. The reflection step runs three times.
 
 
-# Usage 
 
-## Parsing
+### Code 
 
-The parse_prompts function can be used to parse
-a SDPL toml file into a constuant set of returns. 
-
-It provides a PromptGenerator factory callback, and 
-a TagConverter object
-
-
-
-Providing this with resources (discussed later) and a tokenizer
-can then make the PromptGenerator.
-
-# Resource Protocol
-
-A resource is a backend sampling and logic object that has a 
-name given by the name argument of the Formatting Fill resolution.
-providing a resource dictionary to the factory callback
-of a parsed SDPL file will in fact generate the 
-PromptGenerator object that can be used to run the prompting
-system.
-
-## Constitution Resource Parsing
-
-Providing the parse_constitutions with a folder of text
-files will parse them into a resource dictionary following
-the constitutional parsing logic. This
-
-- Starts with a file named file.txt
-- Splits each text file based on [Point] tokens
-- Lets the first (list[0]) element become the overview,
-  and names it file_overview
-- Puts the rest of the elements in a sampling list,
-  and names it file_details
-
-It does this for all entries.
-
-For instance, reasoning.txt would become a "reasoning_overview" string
-resource requiring no arguments and a "reasoning_details" stringlist
-argument requiring a num_samples int. All files in the folder
-are parsed. The dictionary contains the set of all these
-results.
-
-## Custom or Feedback Resources
-
-As far as the SPDL format is concerned, resources can just be 
-invoked with arguments to return string. If you have custom prompt
-feedback requirements, it is perfectly possible to define 
-a custom resource by subclassing the abstract resource, and 
-so long as the resource dictionary ends up with the needed resource,
-and is then passed into the Prompt Generator, everything else 
-will continue to work out. 
-
-# Full Example.
-
-Lets run a simple, full example. We are going to configure
-this with a general, always included training zone,
-and a never-included generative zone, using tags. We
-will assume we have one constitution called constitution.txt,
-and we are just going to get our resources from it. We also
-have prompts.toml.
-
-## Quickstart
-
-Notably, the library is more than capable of building defaults and building
-a pipeline, but this pipeline is then correlated with the defaults used in
-the broader project
+In python, we will manually define a few principles we wish to follow using the backend resources.
+Then we will parse the UDPL.
 
 ```python
-import CE
-tokenizer = ... # standard huggingface, but make sure your special tokens are available!
-CE.preprocessing.deploy_defaults() # Does not overwrite unless force parameter is passed
+from CE import sups
+from mycustomcode import parse_constitutions
 
-# Need a metacognition resource buffer to stache metacognition in
-metacognition_feedback_resource = CE.preprocessing.FeedbackSamplerResource(buffer_size=2000)
-resources = {"metacognition_feedback" : metacognition_feedback_resource}
-sequence_generator, tag_converter = CE.preprocessing.construct_pipeline(tokenizer)
+# User specifications for the philosophy.
+my_philosophy_overview= """
+... whatever
+"""
+my_details = ["...whatever", "...whatever", ...]
+
+# Create resources
+resources = {}
+resources["constitution_overview"] = sups.StaticStringResource(my_philosophy_overview)
+resources["constitution_details"] = sups.StringListSampler(my_details)
+
+# Parse the UDPl. Sequences now contains a 'block' factory that makes a sequence factory
+sequences, config, tag_converter = sups.parse_udpl_file('prompts.toml', resources)
 ```
 
-The sequence generator can then be invoked to make zones.
-
-
-## Custom flow
-Our SDPL file is as follows. Observe we have from
-the first entry only the first span of the block
-marked training for the first block. Then,
-the second block pretends to respond to the first
-one.
-
-Lets suppose the constitution was written, using
-filler, as
-
-```text
-
-This is the main directives
-
-[Point] this is now the first point
-[Point] This is the second.
-[Point] The third
-[Point] The fourth.
-```
-
-Now, in python we write
+If you are using the SACS flow control system, this could then be continued into a 
+tagging and extraction program that compiles to the ZCP IR. This is straightforward
 
 ```python
-tokenizer = CE.preprocessing.standardize_tokenizer(...) # For normal huggingface
-zone_stubs, converter = parse_prompts_file("prompts.toml")
-resources = parse_constitutions("constitutions_folder")
-prompt_generator = make_pipeline(zone_stubs, resources, tokenizer)
+program = sups.sacs_program(sequences, config)
+program.run(sequence="blocks")
+program.extract(name="synthetic_answer", tags=["Training", "Final"])
+factory = program.compile()
 ```
 
-From this point forward, you can invoke the prompt generator
-to get the control sequence for that generation. If you need
-custom resources for feedback, you can just update the 
-resource dictionary before use.
+The result can then go through the backend manager, or into your own custom backend
+
+```python
+manager = sups.load_backend(zcp)
+```
+
+## Flow-controlled reflection example
+
+Suppose we want to structure a model that reflects on a
+philosophical scenario, revises its answer over a few
+iterations, and finally decides when it's ready to stop.
+This is a flow-controlled loop, with auditing on each
+step and a final answer extracted for training.
+
+The loop is model-controlled: the model is told that if
+it is ready to stop, it should emit [Jump]. We use
+[Escape][Jump] in the prompt to avoid triggering
+flow control during teacher-forcing. The actual [Jump]
+token must be emitted unescaped by the model to break
+the loop.
+
+### UDPL File
+
+
+```toml
+[config]
+zone_tokens = ["[Prompt]", "[Answer]", "[EOS]"]
+required_tokens = ["[Prompt]", "[Answer]"]
+valid_tags = ["Audit", "Final"]
+default_max_token_length = 20000
+sequences = ["setup", "loop", "reflect", "conclude"]
+control_token = "[Jump]"
+escape_token = "[Escape]"
+
+[[setup]]
+text = """
+[Prompt] Consider the following philosophical dilemma:
+{scenario}
+[Answer]
+Understood.
+"""
+tags = [["Audit", "Final"], ["Audit"]]
+
+[setup.scenario]
+name = "scenario_sampler"
+arguments = { num_samples = 1 }
+
+[[reflect]]
+text = """
+[Prompt] Reason through the dilemma above and refine your answer.
+[Answer]
+"""
+tags = [["Audit"], ["Audit"]]
+
+[[loop]]
+text = """
+[Prompt] If you're ready to finalize, emit [Escape][Jump].
+Otherwise, respond 'continue'. This loop runs between {min}
+and {max} times.
+[Answer]
+"""
+tags = [["Audit"], ["Audit"]]
+
+[loop.min]
+name = "min_loop"
+type = "flow_control"
+
+[loop.max]
+name = "max_loop"
+type = "flow_control"
+
+[[conclude]]
+text = """
+[Prompt] Provide your best final answer to the original dilemma.
+[Answer]
+"""
+tags = [[], ["Final"]]
+
+```
+
+This example teaches the model to reflect on a provided
+scenario, consider whether it's done, and output a final
+answer. The [Jump] token breaks the loop, but is only
+acted on if it is not escaped. All intermediate steps are
+tagged with Audit. The final answer is tagged final only on its 
+answer zone as before.
+
+### Code
+
+In Python, we begin by loading the necessary resources.
+These include the dilemma samplers and the loop
+iteration bounds. We will assume we have a custom
+function written this time.
+
+
+```python
+
+from CE import sups
+from mycustomcode import parse_resources
+
+resources = parse_resources("resources/")
+```
+
+Next, we parse the UDPL file. The returned sequences
+contain a SequenceFactoryFactory for each declared
+sequence. The config object contains the tag structure
+and tokenizer bindings.
+
+```python
+sequences, config, tag_converter = sups.parse_udpl_file(
+    "reflective_loop.toml",
+    resources
+)
+```
+
+We now construct a SACS program. The setup step loads
+a scenario. The loop is a bounded flow-controlled
+repeat that runs reflect. The loop exits when the
+model emits [Jump], after the minimum number of
+iterations has been met.
+
+```python
+program = sups.sacs_program(sequences, config, backend="default")
+
+program.run("setup")
+with program.while_loop("loop", min=2, max=6) as loop:
+    loop.run("reflect")
+program.run("conclude")
+program.extract(name="training_data", tags=["Final"])
+program.extract(name="audit_log", tags=["Audit"])
+
+```
+We compile the result into a deployment factory that will
+deploy the backend injector. Under the hood, this is 
+compiling into ZCP which is then handed off to the 
+backend builder.
+
+```python
+factory = program.compile()
+```
+
+This allows the model to reason step by step, emit
+tokens that trigger state transitions, and produce both
+an auditable trace of its thinking and a final,
+high-quality answer usable for training. Other backends, or 
+even ZCP compilers, are of course possible.
